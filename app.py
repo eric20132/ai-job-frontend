@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import uuid
+from datetime import datetime # 🌟 1. 引入 datetime 套件
 
 # 替換成你 Render 實際的網址 (注意結尾不要有斜線)
 BACKEND_BASE_URL = "https://ai-job-search-agent-24hrs.onrender.com"
@@ -14,9 +15,13 @@ if "messages" not in st.session_state:
 if "current_task_id" not in st.session_state:
     st.session_state.current_task_id = None
 
-# 渲染對話歷史
+# 🌟 2. 渲染對話歷史，並在對話上方加上時間戳記
 for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
+    with st.chat_message(msg["role"]):
+        # 如果這筆訊息有存時間，就用灰色小字顯示在最上面
+        if "timestamp" in msg:
+            st.caption(f"🕒 {msg['timestamp']}")
+        st.write(msg["content"])
 
 st.divider()
 
@@ -35,8 +40,13 @@ if st.session_state.current_task_id is None:
     if submit_button and prompt.strip():
         new_task_id = str(uuid.uuid4())
         
-        st.chat_message("user").write(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # 🌟 3. 取得當下時間，並與訊息一起存起來
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt,
+            "timestamp": current_time
+        })
 
         with st.spinner('連線至伺服器中...'):
             try:
@@ -44,7 +54,6 @@ if st.session_state.current_task_id is None:
                 response = requests.post(f"{BACKEND_BASE_URL}/api/v1/search-jobs", json=payload, timeout=30)
                 
                 if response.status_code == 200:
-                    # 成功啟動後，才切換狀態並強制重新整理畫面
                     st.session_state.current_task_id = new_task_id
                     st.rerun()
                 else:
@@ -66,40 +75,48 @@ else:
         if st.button("🛑 發現打錯了！立即取消任務", type="primary", use_container_width=True):
             try:
                 cancel_res = requests.post(f"{BACKEND_BASE_URL}/api/v1/cancel-job/{task_id}")
+                cancel_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 取得取消時間
+                
                 if cancel_res.status_code == 200:
                     st.success("✅ 已成功攔截任務！後端運算已停止。")
-                    st.session_state.messages.append({"role": "assistant", "content": "⚠️ 任務已被使用者手動取消。"})
+                    st.session_state.messages.append({
+                        "role": "assistant", 
+                        "content": "⚠️ 任務已被使用者手動取消。",
+                        "timestamp": cancel_time
+                    })
             except Exception as e:
                 st.error(f"取消請求失敗：{e}")
             
-            # 清空狀態，讓畫面變回輸入框
             st.session_state.current_task_id = None
             st.rerun()
             
-    # 右邊按鈕：手動檢查進度 (取代原本會當機的自動輪詢)
+    # 右邊按鈕：手動檢查進度
     with col2:
         if st.button("🔄 檢查最新進度", use_container_width=True):
             try:
                 status_res = requests.get(f"{BACKEND_BASE_URL}/api/v1/task-status/{task_id}")
+                check_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 取得完成/失敗的時間
+                
                 if status_res.status_code == 200:
                     status = status_res.json().get("status")
                     
                     if status == "completed":
                         st.session_state.messages.append({
                             "role": "assistant", 
-                            "content": "✅ 任務完成！專屬職缺分析已經寄送到您的 Slack 頻道中囉！"
+                            "content": "✅ 任務完成！專屬職缺分析已經寄送到您的 Slack 頻道中囉！",
+                            "timestamp": check_time
                         })
                         st.session_state.current_task_id = None
                         st.rerun()
                     elif status == "failed":
                         st.session_state.messages.append({
                             "role": "assistant", 
-                            "content": "❌ 任務執行過程中發生錯誤，請稍後再試。"
+                            "content": "❌ 任務執行過程中發生錯誤，請稍後再試。",
+                            "timestamp": check_time
                         })
                         st.session_state.current_task_id = None
                         st.rerun()
                     else:
-                        # 用 Streamlit 右下角的 Toast 小氣泡提示，不干擾主畫面
                         st.toast("🏃 Agent 還在努力運算中，請再等一下喔！", icon="⏳")
                 else:
                     st.warning("⚠️ 無法取得狀態，可能是任務已結束，或是你的後端 (api.py) 還沒更新唷！")
