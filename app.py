@@ -68,66 +68,72 @@ if st.session_state.current_task_id is None:
 # 狀態 2：任務執行中 (隱藏輸入框，只顯示操作按鈕)
 # ==========================================
 else:
+    
     task_id = st.session_state.current_task_id
-    st.info("🔄 Agent 正在背景賣力為您搜尋中... (請耐心等候幾分鐘)")
+    st.info("🔄 Agent 正在跨網搜尋與分析，請耐心等候幾分鐘... (同時將同步發送至 Slack)")
     
-    col1, col2 = st.columns(2)
-    
-    # 左邊按鈕：取消任務
-    with col1:
-        if st.button("🛑 發現打錯了！立即取消任務", type="primary", use_container_width=True):
-            try:
-                cancel_res = requests.post(f"{BACKEND_BASE_URL}/api/v1/cancel-job/{task_id}")
-                
-                # 🌟 取得取消時的太平洋時間
-                cancel_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
-                
-                if cancel_res.status_code == 200:
-                    st.success("✅ 已成功攔截任務！後端運算已停止。")
-                    st.session_state.messages.append({
-                        "role": "assistant", 
-                        "content": "⚠️ 任務已被使用者手動取消。",
-                        "timestamp": cancel_time
-                    })
-            except Exception as e:
-                st.error(f"取消請求失敗：{e}")
+    # 🌟 1. 現在只需要一個大大的取消按鈕
+    if st.button("🛑 發現打錯了！立即取消任務", type="primary", use_container_width=True):
+        try:
+            cancel_res = requests.post(f"{BACKEND_BASE_URL}/api/v1/cancel-job/{task_id}")
+            cancel_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+            if cancel_res.status_code == 200:
+                st.success("✅ 已成功攔截任務！後端運算已停止。")
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": "⚠️ 任務已被手動取消。",
+                    "timestamp": cancel_time
+                })
+        except Exception as e:
+            st.error(f"取消請求失敗：{e}")
+        
+        st.session_state.current_task_id = None
+        st.rerun()
             
+    # 🌟 2. 核心魔法：自動背景輪詢 (Auto-polling)
+    try:
+        status_res = requests.get(f"{BACKEND_BASE_URL}/api/v1/task-status/{task_id}")
+        
+        if status_res.status_code == 200:
+            data = status_res.json()
+            status = data.get("status")
+            
+            if status == "completed":
+                check_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+                # 🌟 拿到後端傳來的完整 Markdown 報告！
+                final_result = data.get("result", "✅ 任務完成！") 
+                
+                # 將這份精美的報告加入對話紀錄中
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": final_result,
+                    "timestamp": check_time
+                })
+                # 清除任務狀態，讓畫面變回輸入框
+                st.session_state.current_task_id = None
+                st.rerun()
+                
+            elif status == "failed":
+                check_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": "❌ 任務執行過程中發生錯誤或被 Critic 退件達上限，請稍後再試。",
+                    "timestamp": check_time
+                })
+                st.session_state.current_task_id = None
+                st.rerun()
+                
+            elif status == "running":
+                # 🌟 如果還在跑，暫停 2.5 秒後自動刷新網頁，再次進來查進度
+                time.sleep(2.5)
+                st.rerun()
+                
+        else:
+            st.warning("⚠️ 無法取得狀態，可能是任務已結束，或是後端尚未更新。")
             st.session_state.current_task_id = None
             st.rerun()
             
-    # 右邊按鈕：手動檢查進度
-    with col2:
-        if st.button("🔄 檢查最新進度", use_container_width=True):
-            try:
-                status_res = requests.get(f"{BACKEND_BASE_URL}/api/v1/task-status/{task_id}")
-                
-                # 🌟 取得完成或失敗時的太平洋時間
-                check_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
-                
-                if status_res.status_code == 200:
-                    status = status_res.json().get("status")
-                    
-                    if status == "completed":
-                        st.session_state.messages.append({
-                            "role": "assistant", 
-                            "content": "✅ 任務完成！專屬職缺分析已經寄送到您的 Slack 頻道中囉！",
-                            "timestamp": check_time
-                        })
-                        st.session_state.current_task_id = None
-                        st.rerun()
-                    elif status == "failed":
-                        st.session_state.messages.append({
-                            "role": "assistant", 
-                            "content": "❌ 任務執行過程中發生錯誤，請稍後再試。",
-                            "timestamp": check_time
-                        })
-                        st.session_state.current_task_id = None
-                        st.rerun()
-                    else:
-                        st.toast("🏃 Agent 還在努力運算中，請再等一下喔！", icon="⏳")
-                else:
-                    st.warning("⚠️ 無法取得狀態，可能是任務已結束，或是你的後端 (api.py) 還沒更新唷！")
-                    st.session_state.current_task_id = None
-                    st.rerun()
-            except Exception as e:
-                st.error(f"查詢失敗：{str(e)}")
+    except Exception as e:
+        # 如果網路瞬斷，就等 3 秒再試一次，不要崩潰
+        time.sleep(3)
+        st.rerun()
