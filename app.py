@@ -17,7 +17,7 @@ for msg in st.session_state.messages:
 
 # 接收使用者輸入 (預設帶入找尋西雅圖 AI 工程師的提示字作為範例)
 default_prompt = "幫我在 Seattle 尋找適合的 AI Engineer 職缺..."
-if prompt := st.chat_input(default_prompt):
+if prompt := st.text_area(default_prompt):
     
     # 顯示並儲存使用者的訊息
     st.chat_message("user").write(prompt)
