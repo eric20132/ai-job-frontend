@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 
 # 替換成你 Render 實際的網址與端點
-BACKEND_URL = "https://ai-job-search-agent-24hrs.onrender.com/api/chat"
+BACKEND_URL = "https://ai-job-search-agent-24hrs.onrender.com/api/v1/search-jobs"
 
 st.set_page_config(page_title="專屬求職 Agent", page_icon="🤖")
 st.title("🤖 專屬求職 Agent")
