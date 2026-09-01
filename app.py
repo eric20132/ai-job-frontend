@@ -1,7 +1,11 @@
 import streamlit as st
 import requests
 import uuid
-from datetime import datetime # 🌟 1. 引入 datetime 套件
+from datetime import datetime
+from zoneinfo import ZoneInfo # 🌟 引入內建的時區套件
+
+# 設定目標時區 (會自動處理 PDT/PST)
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 # 替換成你 Render 實際的網址 (注意結尾不要有斜線)
 BACKEND_BASE_URL = "https://ai-job-search-agent-24hrs.onrender.com"
@@ -15,10 +19,9 @@ if "messages" not in st.session_state:
 if "current_task_id" not in st.session_state:
     st.session_state.current_task_id = None
 
-# 🌟 2. 渲染對話歷史，並在對話上方加上時間戳記
+# 渲染對話歷史，並在對話上方加上時間戳記
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        # 如果這筆訊息有存時間，就用灰色小字顯示在最上面
         if "timestamp" in msg:
             st.caption(f"🕒 {msg['timestamp']}")
         st.write(msg["content"])
@@ -40,8 +43,8 @@ if st.session_state.current_task_id is None:
     if submit_button and prompt.strip():
         new_task_id = str(uuid.uuid4())
         
-        # 🌟 3. 取得當下時間，並與訊息一起存起來
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 🌟 取得當下太平洋時間 (並加上 %Z 自動顯示 PDT 或 PST)
+        current_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
         st.session_state.messages.append({
             "role": "user", 
             "content": prompt,
@@ -75,7 +78,9 @@ else:
         if st.button("🛑 發現打錯了！立即取消任務", type="primary", use_container_width=True):
             try:
                 cancel_res = requests.post(f"{BACKEND_BASE_URL}/api/v1/cancel-job/{task_id}")
-                cancel_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 取得取消時間
+                
+                # 🌟 取得取消時的太平洋時間
+                cancel_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
                 
                 if cancel_res.status_code == 200:
                     st.success("✅ 已成功攔截任務！後端運算已停止。")
@@ -95,7 +100,9 @@ else:
         if st.button("🔄 檢查最新進度", use_container_width=True):
             try:
                 status_res = requests.get(f"{BACKEND_BASE_URL}/api/v1/task-status/{task_id}")
-                check_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 取得完成/失敗的時間
+                
+                # 🌟 取得完成或失敗時的太平洋時間
+                check_time = datetime.now(PACIFIC_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
                 
                 if status_res.status_code == 200:
                     status = status_res.json().get("status")
