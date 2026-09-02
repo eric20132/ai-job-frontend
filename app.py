@@ -3,6 +3,7 @@ import requests
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo # 🌟 引入內建的時區套件
+import time
 
 # 設定目標時區 (會自動處理 PDT/PST)
 PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
